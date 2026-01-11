@@ -4,53 +4,46 @@ const fetch = require("node-fetch");
 const app = express();
 app.use(express.json());
 
-const HF_API_KEY = process.env.HF_API_KEY;
-const MODEL = "HuggingFaceH4/zephyr-7b-beta";
-
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", backend: "huggingface" });
+  res.json({ status: "ok" });
 });
 
 app.post("/chat", async (req, res) => {
   try {
-    const messages = req.body.prompt;
+    const prompt = req.body.prompt;
+    if (!prompt) {
+      return res.status(400).json({ error: "No prompt provided" });
+    }
 
-    const response = await fetch(
-      `https://api-inference.huggingface.co/models/${MODEL}`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${HF_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          inputs: messages.map(m => `${m.role}: ${m.content}`).join("\n"),
-          parameters: {
-            max_new_tokens: 120,
-            temperature: 0.7
-          }
-        })
-      }
-    );
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "llama3-8b-8192",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 120
+      })
+    });
 
     const data = await response.json();
 
-    if (data.error) {
-      return res.status(500).json({ error: data.error });
+    if (!data.choices) {
+      console.error(data);
+      return res.status(500).json({ error: "AI response invalid" });
     }
 
-    const reply =
-      data.generated_text?.split("assistant:").pop()?.trim()
-      || "…";
+    res.json({ reply: data.choices[0].message.content });
 
-    res.json({ reply });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: "server error" });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Shrapnel HF proxy running on port ${PORT}`);
+app.listen(3000, () => {
+  console.log("🚀 Shrapnel proxy running on port 3000");
 });
