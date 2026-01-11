@@ -1,54 +1,79 @@
+// --------------------------------------------------
+// REQUIRED (Node 18+ has fetch built-in — NO IMPORT)
+// --------------------------------------------------
 const express = require("express");
-const fetch = require("node-fetch");
+const bodyParser = require("body-parser");
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 
-// health check
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
+// --------------------------------------------------
+// CONFIG
+// --------------------------------------------------
+const OLLAMA_URL = "http://localhost:11434/api/chat";
+const MODEL_NAME = "llama3";
+const PORT = 3000;
 
-// chat endpoint
+// --------------------------------------------------
+// CHAT ENDPOINT (ROBLOX CALLS THIS)
+// --------------------------------------------------
 app.post("/chat", async (req, res) => {
-  try {
-    const prompt = req.body.prompt;
+	const prompt = req.body.prompt;
 
-    const hfResponse = await fetch(
-      "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-0.5B-Instruct",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.HF_TOKEN}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            max_new_tokens: 120,
-            temperature: 0.7
-          }
-        })
-      }
-    );
+	if (!prompt) {
+		return res.status(400).json({ error: "No prompt provided" });
+	}
 
-    const data = await hfResponse.json();
+	console.log("📩 Prompt received:");
+	console.log(prompt);
 
-    // Hugging Face sometimes returns array, sometimes object
-    let reply =
-      Array.isArray(data) && data[0]?.generated_text
-        ? data[0].generated_text
-        : data.generated_text || "…";
+	try {
+		const ollamaRes = await fetch(OLLAMA_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				model: MODEL_NAME,
+				messages: [
+					{
+						role: "system",
+						content:
+							"You are Shrapnel, a depressed sentient teapot. Stay in character. Replies must be 1–3 sentences."
+					},
+					{
+						role: "user",
+						content: prompt
+					}
+				],
+				stream: false
+			})
+		});
 
-    res.json({ reply });
+		const data = await ollamaRes.json();
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "server error" });
-  }
+		console.log("🧠 RAW OLLAMA RESPONSE:");
+		console.log(JSON.stringify(data, null, 2));
+
+		// ✅ CORRECT EXTRACTION (THIS WAS THE BUG)
+		const reply =
+			data?.message?.content ||
+			data?.response ||
+			"...";
+
+		console.log("✅ Reply sent to Roblox:");
+		console.log(reply);
+
+		res.json({ reply });
+
+	} catch (err) {
+		console.error("❌ Ollama error:", err);
+		res.status(500).json({ error: "Ollama failed" });
+	}
 });
 
-const PORT = process.env.PORT || 3000;
+// --------------------------------------------------
+// START SERVER
+// --------------------------------------------------
 app.listen(PORT, () => {
-  console.log("🚀 Shrapnel proxy running on port", PORT);
+	console.log(`🚀 Proxy running at http://localhost:${PORT}`);
+	console.log("🫖 Waiting for Shrapnel to speak...");
 });
