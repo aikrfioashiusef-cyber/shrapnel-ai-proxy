@@ -1,5 +1,5 @@
-import express from "express";
-import fetch from "node-fetch";
+const express = require("express");
+const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
@@ -14,8 +14,6 @@ app.get("/health", (req, res) => {
 app.post("/chat", async (req, res) => {
   try {
     const messages = req.body.prompt;
-
-    console.log("📩 Prompt received");
 
     const response = await fetch(
       `https://api-inference.huggingface.co/models/${MODEL}`,
@@ -38,7 +36,6 @@ app.post("/chat", async (req, res) => {
     const data = await response.json();
 
     if (data.error) {
-      console.error("HF ERROR:", data.error);
       return res.status(500).json({ error: data.error });
     }
 
@@ -46,12 +43,9 @@ app.post("/chat", async (req, res) => {
       data.generated_text?.split("assistant:").pop()?.trim()
       || "…";
 
-    console.log("🤖 Reply:", reply);
-    console.log("────────────");
-
     res.json({ reply });
   } catch (err) {
-    console.error("❌ Server error:", err);
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -60,4 +54,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Shrapnel HF proxy running on port ${PORT}`);
 });
-
