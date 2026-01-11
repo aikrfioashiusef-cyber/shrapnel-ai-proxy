@@ -1,57 +1,53 @@
-const express = require("express")
-const fetch = require("node-fetch")
+const express = require("express");
+const fetch = require("node-fetch");
+const app = express();
+app.use(express.json());
 
-const app = express()
-app.use(express.json())
+const HF_TOKEN = process.env.HF_TOKEN; // store this in Render secret
 
-// ✅ Health check
+// health check
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", ollama: "connected" })
-})
+  res.json({ status: "ok" });
+});
 
-// ✅ Chat endpoint (Roblox-compatible)
+// chat endpoint
 app.post("/chat", async (req, res) => {
   try {
-    const { messages } = req.body
+    const { prompt } = req.body;
 
-    console.log("📩 Messages received:")
-    console.log(messages)
+    const hfResponse = await fetch(
+      "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + HF_TOKEN
+        },
+        body: JSON.stringify({ inputs: prompt })
+      }
+    );
 
-    const response = await fetch("http://localhost:11434/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama3",
-        messages: messages,
-        stream: false
-      })
-    })
+    const data = await hfResponse.json();
 
-    const data = await response.json()
+    // HF returns array or object depending on model
+    let text = "";
+    if (Array.isArray(data) && data[0].generated_text) {
+      text = data[0].generated_text;
+    } else if (data.generated_text) {
+      text = data.generated_text;
+    } else {
+      text = JSON.stringify(data);
+    }
 
-    const reply = data.message.content
-
-    console.log("🤖 Reply:")
-    console.log(reply)
-    console.log("────────────")
-
-    // 🔁 OpenAI-style response (Roblox expects this)
-    res.json({
-      choices: [
-        {
-          message: {
-            content: reply
-          }
-        }
-      ]
-    })
+    res.json({ reply: text });
   } catch (err) {
-    console.error("❌ Error:", err)
-    res.status(500).json({ error: "AI error" })
+    console.error(err);
+    res.status(500).json({ error: "Inference error" });
   }
-})
-const PORT = process.env.PORT || 3000;
+});
 
+// listen
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-	console.log("🚀 Shrapnel proxy running on port", PORT);
+  console.log("Server running on port", PORT);
 });
