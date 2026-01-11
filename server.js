@@ -1,53 +1,63 @@
-const express = require("express");
-const fetch = require("node-fetch");
+import express from "express";
+import fetch from "node-fetch";
+
 const app = express();
 app.use(express.json());
 
-const HF_TOKEN = process.env.HF_TOKEN; // store this in Render secret
+const HF_API_KEY = process.env.HF_API_KEY;
+const MODEL = "HuggingFaceH4/zephyr-7b-beta";
 
-// health check
 app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", backend: "huggingface" });
 });
 
-// chat endpoint
 app.post("/chat", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const messages = req.body.prompt;
 
-    const hfResponse = await fetch(
-      "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+    console.log("📩 Prompt received");
+
+    const response = await fetch(
+      `https://api-inference.huggingface.co/models/${MODEL}`,
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + HF_TOKEN
+          "Authorization": `Bearer ${HF_API_KEY}`,
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ inputs: prompt })
+        body: JSON.stringify({
+          inputs: messages.map(m => `${m.role}: ${m.content}`).join("\n"),
+          parameters: {
+            max_new_tokens: 120,
+            temperature: 0.7
+          }
+        })
       }
     );
 
-    const data = await hfResponse.json();
+    const data = await response.json();
 
-    // HF returns array or object depending on model
-    let text = "";
-    if (Array.isArray(data) && data[0].generated_text) {
-      text = data[0].generated_text;
-    } else if (data.generated_text) {
-      text = data.generated_text;
-    } else {
-      text = JSON.stringify(data);
+    if (data.error) {
+      console.error("HF ERROR:", data.error);
+      return res.status(500).json({ error: data.error });
     }
 
-    res.json({ reply: text });
+    const reply =
+      data.generated_text?.split("assistant:").pop()?.trim()
+      || "…";
+
+    console.log("🤖 Reply:", reply);
+    console.log("────────────");
+
+    res.json({ reply });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Inference error" });
+    console.error("❌ Server error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// listen
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log(`🚀 Shrapnel HF proxy running on port ${PORT}`);
 });
+
